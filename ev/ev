@@ -1,0 +1,146 @@
+#!/usr/bin/env python2.7
+
+import argparse
+import os
+import sys
+
+from pprint import pprint
+from tabulate import tabulate
+
+try:
+    from eventador_core import dbadmin_utils as dba
+except ImportError:
+    print("This program requires the eventador_core module.")
+    sys.exit(1)
+
+class MyParser(argparse.ArgumentParser): 
+    """ janky subclass to eliminate the shitty argparse help """
+    def error(self, message):
+        sys.stderr.write('NOPE: %s\n' % message)
+        self.print_help()
+        sys.exit(2)
+
+    def print_help(self):
+        print """
+Usage: {} command [options]
+
+commands:
+
+ beta                               List all beta users, sorted by sign-up date
+ depl ORGANIZATION_NAME             List all deployments belonging to org
+ hosts DEPLOYMENT_ID                List all host assets belonging to deployment
+ orgs                               List all organizations
+ orgs -p PATTERN                    List organizations matching pattern
+ users                              List all registered users
+ users -o ORGANIZATION_NAME         List all users belonging to organization
+""".format(sys.argv[0].split('/')[-1])
+
+class Eventador(object):
+    @staticmethod
+    def tbprint(d, sort_key=None, headers='keys'):
+        """ print list of dictionaries, and optionally
+            sort them
+        """
+        if d:
+            if not sort_key:
+                print tabulate(d, headers=headers)
+            else:
+                print tabulate(sorted(d, key=lambda k: k[sort_key]), headers=headers)
+
+    def list_orgs(self, pattern):
+        if pattern:
+            res = dba.get_orgs_name_pattern('%'+pattern+'%')
+            self.tbprint(res)
+        else:
+            # return all organizations
+            self.tbprint(dba.get_orgs(), sort_key='orgname')
+
+    def list_orgs_pattern(self, pattern):
+        self.tbprint(dba.get_orgs_name_pattern(pattern), sort_key='orgname')
+
+    def list_users(self, org_name):
+        if org_name:
+            _org = dba.get_org_by_name(org_name)
+            if _org:
+                org_id = _org['orgid']
+                _users = dba.get_users_by_org(org_id)
+                self.tbprint(_users)
+        else:
+            # list all users
+            self.tbprint(dba.get_users_rich(), sort_key='username')
+
+    def list_deployments_by_orgid(self, org_name):
+        _org = dba.get_org_by_name(org_name)
+        if _org:
+            org_id = _org['orgid']
+            _deployments = dba.get_deployments_by_orgid(org_id)
+
+            keys = ['status', 'dtcreated', 'style', 'deploymentname', 'deploymentid', 'progress']
+
+            filtered_deployments = []
+            for d in _deployments:
+                filtered_deployments.append(dict((k, d[k]) for k in keys if k in d))
+
+            self.tbprint(filtered_deployments, sort_key='deploymentname')
+
+    def get_hostmap(self, deploymentid):
+        _hostmap = dba.get_deployment_hostmap(deploymentid)
+
+        if _hostmap:
+            hosts = _hostmap['hostmap']
+
+            zookeepers = [x['host']+":"+str(x['port']) for x in hosts['zookeeper']]
+            kafka = [x['host']+":"+str(x['port']) for x in hosts['kafka']]
+            ecs = [x['host']+":"+str(x['port']) for x in hosts['ecs']]
+
+        print "zookeeper: ", ','.join(zookeepers)
+        print "kafka:     ", ','.join(kafka)
+        print "ecs:       ", ','.join(ecs)
+
+    def get_beta_users(self):
+        self.tbprint(dba.get_beta_users())
+
+def args():
+    parser = MyParser(description='Eventador cli tool', add_help=False)
+    parser.add_argument('-f', help='help', action='store_true')
+
+    subparsers = parser.add_subparsers(help='commands', dest="subparser_name")
+
+    # list all orgs
+    list_org_parser = subparsers.add_parser('orgs', help="List organizations")
+    list_org_parser.add_argument('-p', help="find organizations matching pattern", type=str)
+
+    # list users, optionally by org
+    list_users_parser = subparsers.add_parser('users', help="List users in organization")
+    list_users_parser.add_argument('-o', help="organization name", type=str)
+
+    # list deployments by org
+    list_deployments_parser = subparsers.add_parser('depl', help="List deployments by organization name")
+    list_deployments_parser.add_argument('orgname', help="organization name", type=str)
+
+    # get hostmap for deployment
+    get_hostmap_parser = subparsers.add_parser('hosts', help="Get hostmap for deployment")
+    get_hostmap_parser.add_argument('deploymentid', help="deployment id", type=str)
+
+    # list beta signups
+    get_beta_parser = subparsers.add_parser('beta', help="Get users in beta table")
+
+    args = parser.parse_args()
+
+    return args
+
+if __name__ == "__main__":
+    arg = args()
+
+    e = Eventador()
+
+    if arg.subparser_name == 'orgs':
+        e.list_orgs(arg.p)
+    elif arg.subparser_name == 'users':
+        e.list_users(arg.o)
+    elif arg.subparser_name == 'depl':
+        e.list_deployments_by_orgid(arg.orgname)
+    elif arg.subparser_name == 'hosts':
+        e.get_hostmap(arg.deploymentid)
+    elif arg.subparser_name == 'beta':
+        e.get_beta_users()

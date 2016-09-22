@@ -1,0 +1,23 @@
+cffi==1.8.3
+click==6.6
+cryptography==1.5
+enum34==1.1.6
+-e git+https://github.com/Eventador/eventador_core@20f1f57841bbf727989a66ee9b980b237761225e#egg=eventador_core
+gevent==1.1.2
+greenlet==0.4.10
+idna==2.1
+ipaddress==1.0.17
+kafka-python==1.3.1
+kazoo==2.2.1
+numpy==1.11.1
+pandas==0.18.1
+psycopg2==2.6.2
+pyasn1==0.1.9
+pycparser==2.14
+pykafka==2.5.0
+pyOpenSSL==16.1.0
+python-dateutil==2.5.3
+pytz==2016.6.1
+requests==2.11.1
+six==1.10.0
+tabulate==0.7.5
